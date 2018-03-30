@@ -6,6 +6,7 @@ const fs = require('fs');
 const webUrl = "";
 const baseUrl = "";
 let relatUrl = "";
+let title = "";
 
 superagent
     .get(webUrl)
@@ -19,19 +20,11 @@ superagent
         });
         return imgList;
     }).then(list => {
-        relatUrl = baseUrl + list[0].href;
-        return superagent.get(relatUrl).charset('gbk')
-    }).then(html => {
-        let $ = cheerio.load(html.text, {decodeEntities: false});
-        let imgs = $(".article-content img");
-        let title = $(".article-title").text();
-        let srcs = new Array();
-        imgs.each((i, img) => {
-            srcs.push(img.attribs.src)
-        })
-        return {srcs,title};
-    }).then(album => {
-        download(album.srcs, album.title);
+        relatUrl = baseUrl + list[3].href;
+        console.log(relatUrl)
+        return nextPage(relatUrl);
+    }).then(srcs => {
+        download(srcs, title);
     })
     .catch(err =>{
         console.log(err);
@@ -59,20 +52,33 @@ const download = (urls, title) =>  {
     })
 }
 
-const nextPage = (html) => {
-    let $ = cheerio.load(html.text, {decodeEntities: false});
-    let len = $(".next-page").length;
-    let imgs = $(".article-content img");
-    let title = $(".article-title").text();
-    let srcs = new Array();
-    imgs.each((i, img) => {
-        srcs.push(img.attribs.src)
-    })
-    len ==1 && srcs.concat((function(){
-        let nextUrl = $(".next-page a").attribs.href;
-        let realUrl = relatUrl.split("/");
-        realUrl.length = realUrl.length - 1;
-
-    })()); 
+let count = 0;
+const nextPage = (url) => {
+    return superagent.get(url).charset('gbk')
+        .then((html) => {
+            let $ = cheerio.load(html.text, {decodeEntities: false});
+            title = $(".article-title").text();            
+            console.log(count++);
+            let len = $(".next-page").length;
+            if(len < 1) {
+                return [];
+            }
+            let nextUrl = "";
+            len == 1 && (nextUrl = (function(){
+                let nextUrl = $(".next-page a")[0].attribs.href;
+                realUrl = relatUrl.split("/");
+                realUrl.length = realUrl.length - 1;
+                realUrl = realUrl.join("/");
+                return realUrl + "/" + nextUrl;
+            })());  
+            let imgs = $(".article-content img");
+            let srcs = new Array();
+            imgs.each((i, img) => {
+                srcs.push(img.attribs.src);
+            })
+            return nextPage(nextUrl).then((res) => {
+                return [].concat(srcs, res);
+            })
+        })
 }
 
